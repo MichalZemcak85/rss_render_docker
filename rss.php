@@ -1,10 +1,11 @@
 <?php
 header("Content-Type: application/rss+xml; charset=UTF-8");
 
-// Načti HTML ze stránky SVJ
+// URL webu SVJ
 $url = "https://kytlicka.eu/aktuality-a-oznameni/";
-$html = @file_get_contents($url);
 
+// Načti HTML
+$html = @file_get_contents($url);
 if ($html === false) {
     die("Nelze načíst obsah stránky.");
 }
@@ -14,25 +15,44 @@ $dom = new DOMDocument();
 $dom->loadHTML($html);
 $xpath = new DOMXPath($dom);
 
-// Najdi první článek
-$titleNode = $xpath->query("//h2")[0];  // Titulek článku
-$dateNode = $xpath->query("//p[contains(@class,'blog-date')]")[0]; // Datum
-$linkNode = $xpath->query("//h2/a")[0]; // Link
+// Najdi první článek (nejnovější)
+$titleNode = $xpath->query("//h2")[0];  
+$dateNode = $xpath->query("//p[contains(@class,'blog-date')]")[0]; 
+$linkNode = $xpath->query("//h2/a")[0];
 
+// Zpracuj data
 $title = $titleNode ? trim($titleNode->nodeValue) : "Neznámý titulek";
 $link = $linkNode ? $linkNode->getAttribute("href") : "https://kytlicka.eu";
 if (strpos($link, "http") !== 0) {
-    $link = "https://kytlicka.eu" . $link; // Oprava relativního odkazu
+    $link = "https://kytlicka.eu" . $link; 
 }
-$description = $title; // můžeš upravit nebo doplnit výpis úvodu článku
+$description = $title;
 
 // Zpracuj datum
-$dateText = $dateNode ? trim($dateNode->nodeValue) : date("d.m.Y");
+$dateText = $dateNode ? trim($dateNode->nodeValue) : "";
 $timestamp = strtotime($dateText);
-$pubDate = date(DATE_RSS, $timestamp ?: time());
+if ($timestamp) {
+    $pubDate = date(DATE_RSS, $timestamp);
+} else {
+    // fallback – pevné datum, aby se feed neměnil každý den
+    $pubDate = "Tue, 23 Sep 2025 00:00:00 +0000";
+}
 
-// Vytvoření XML
+// 🧩 Ulož si poslední článek pro kontrolu duplicity
+$cacheFile = __DIR__ . '/last_title.txt';
+$lastTitle = file_exists($cacheFile) ? trim(file_get_contents($cacheFile)) : '';
+
+if ($lastTitle !== $title) {
+    // nový článek – aktualizuj uložený název
+    file_put_contents($cacheFile, $title);
+} else {
+    // žádná změna článku → použij starší datum (aby se neposílalo znovu)
+    $pubDate = "Tue, 23 Sep 2025 00:00:00 +0000";
+}
+
+// 🧱 Vytvoření XML
 $xml = new DOMDocument("1.0", "UTF-8");
+$xml->formatOutput = true;
 $rss = $xml->createElement("rss");
 $rss->setAttribute("version", "2.0");
 $channel = $xml->createElement("channel");
@@ -44,15 +64,16 @@ $channel->appendChild($xml->createElement("description", "Novinky zveřejněné 
 
 // Položka
 $item = $xml->createElement("item");
-$item->appendChild($xml->createElement("title", $title));
-$item->appendChild($xml->createElement("link", $link));
-$item->appendChild($xml->createElement("description", $description));
+$item->appendChild($xml->createElement("title", htmlspecialchars($title)));
+$item->appendChild($xml->createElement("link", htmlspecialchars($link)));
+$item->appendChild($xml->createElement("description", htmlspecialchars($description)));
 $item->appendChild($xml->createElement("pubDate", $pubDate));
-$item->appendChild($xml->createElement("guid", $link));
-$channel->appendChild($item);
+$item->appendChild($xml->createElement("guid", htmlspecialchars($link)));
 
-// Finalizace
+$channel->appendChild($item);
 $rss->appendChild($channel);
 $xml->appendChild($rss);
+
+// Výstup
 echo $xml->saveXML();
 ?>
