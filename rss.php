@@ -1,11 +1,10 @@
 <?php
 header("Content-Type: application/rss+xml; charset=UTF-8");
 
-// URL webu SVJ
+// Načti HTML ze stránky SVJ
 $url = "https://kytlicka.eu/aktuality-a-oznameni/";
-
-// Načti HTML
 $html = @file_get_contents($url);
+
 if ($html === false) {
     die("Nelze načíst obsah stránky.");
 }
@@ -15,38 +14,38 @@ $dom = new DOMDocument();
 $dom->loadHTML($html);
 $xpath = new DOMXPath($dom);
 
-// Najdi první článek (nejnovější)
-$titleNode = $xpath->query("//h2")[0];
-$dateNode = $xpath->query("//p[contains(@class,'blog-date')]")[0];
-$linkNode = $xpath->query("//h2/a")[0];
+// Najdi první článek
+$titleNode = $xpath->query("//h2")[0];  // Titulek článku
+$dateNode = $xpath->query("//p[contains(@class,'blog-date')]")[0]; // Datum
+$linkNode = $xpath->query("//h2/a")[0]; // Link
 
-// Zpracuj data
 $title = $titleNode ? trim($titleNode->nodeValue) : "Neznámý titulek";
 $link = $linkNode ? $linkNode->getAttribute("href") : "https://kytlicka.eu";
 if (strpos($link, "http") !== 0) {
-    $link = "https://kytlicka.eu" . $link;
+    $link = "https://kytlicka.eu" . $link; // Oprava relativního odkazu
 }
-$description = $title;
+$description = $title; // můžeš doplnit úvod článku
 
-// Zpracuj datum
+// 🧭 Zpracuj datum (formát 23.09.2025)
 $dateText = $dateNode ? trim($dateNode->nodeValue) : "";
-$timestamp = strtotime($dateText);
-
-// Připrav cache soubor
-$cacheFile = __DIR__ . '/last_item.json';
-$lastItem = file_exists($cacheFile) ? json_decode(file_get_contents($cacheFile), true) : [];
-
-// Pokud je nový článek, uloží se nový timestamp, jinak zůstane starý
-if (!isset($lastItem['title']) || $lastItem['title'] !== $title) {
-    $pubDate = date(DATE_RSS, $timestamp ?: time());
-    $lastBuildDate = $pubDate;
-    file_put_contents($cacheFile, json_encode(['title' => $title, 'link' => $link, 'pubDate' => $pubDate]));
+if (preg_match('/(\d{1,2})\.(\d{1,2})\.(\d{4})/', $dateText, $matches)) {
+    $day = (int)$matches[1];
+    $month = (int)$matches[2];
+    $year = (int)$matches[3];
+    $timestamp = mktime(0, 0, 0, $month, $day, $year);
 } else {
-    $pubDate = $lastItem['pubDate'];
-    $lastBuildDate = $lastItem['pubDate'];
+    // fallback pro jiné formáty
+    $timestamp = strtotime($dateText);
 }
 
-// 🧱 Vytvoření XML
+// Pokud se datum nepodaří načíst, použij aktuální
+if (!$timestamp) {
+    $timestamp = time();
+}
+
+$pubDate = date(DATE_RSS, $timestamp);
+
+// Vytvoření XML
 $xml = new DOMDocument("1.0", "UTF-8");
 $xml->formatOutput = true;
 
@@ -58,20 +57,19 @@ $channel = $xml->createElement("channel");
 $channel->appendChild($xml->createElement("title", "SVJ Kytlická Novinky"));
 $channel->appendChild($xml->createElement("link", $url));
 $channel->appendChild($xml->createElement("description", "Novinky zveřejněné na webu SVJ Kytlická"));
-$channel->appendChild($xml->createElement("lastBuildDate", $lastBuildDate));
+$channel->appendChild($xml->createElement("lastBuildDate", $pubDate));
 
-// Položka
+// Položka článku
 $item = $xml->createElement("item");
-$item->appendChild($xml->createElement("title", htmlspecialchars($title)));
-$item->appendChild($xml->createElement("link", htmlspecialchars($link)));
-$item->appendChild($xml->createElement("description", htmlspecialchars($description)));
+$item->appendChild($xml->createElement("title", $title));
+$item->appendChild($xml->createElement("link", $link));
+$item->appendChild($xml->createElement("description", $description));
 $item->appendChild($xml->createElement("pubDate", $pubDate));
-$item->appendChild($xml->createElement("guid", htmlspecialchars($link)));
-
+$item->appendChild($xml->createElement("guid", $link));
 $channel->appendChild($item);
+
+// Dokončení XML
 $rss->appendChild($channel);
 $xml->appendChild($rss);
-
-// Výstup
 echo $xml->saveXML();
 ?>
