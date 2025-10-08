@@ -16,43 +16,40 @@ $dom->loadHTML($html);
 $xpath = new DOMXPath($dom);
 
 // Najdi první článek (nejnovější)
-$titleNode = $xpath->query("//h2")[0];  
-$dateNode = $xpath->query("//p[contains(@class,'blog-date')]")[0]; 
+$titleNode = $xpath->query("//h2")[0];
+$dateNode = $xpath->query("//p[contains(@class,'blog-date')]")[0];
 $linkNode = $xpath->query("//h2/a")[0];
 
 // Zpracuj data
 $title = $titleNode ? trim($titleNode->nodeValue) : "Neznámý titulek";
 $link = $linkNode ? $linkNode->getAttribute("href") : "https://kytlicka.eu";
 if (strpos($link, "http") !== 0) {
-    $link = "https://kytlicka.eu" . $link; 
+    $link = "https://kytlicka.eu" . $link;
 }
 $description = $title;
 
 // Zpracuj datum
 $dateText = $dateNode ? trim($dateNode->nodeValue) : "";
 $timestamp = strtotime($dateText);
-if ($timestamp) {
-    $pubDate = date(DATE_RSS, $timestamp);
-} else {
-    // fallback – pevné datum, aby se feed neměnil každý den
-    $pubDate = "Tue, 23 Sep 2025 00:00:00 +0000";
-}
 
-// 🧩 Ulož si poslední článek pro kontrolu duplicity
-$cacheFile = __DIR__ . '/last_title.txt';
-$lastTitle = file_exists($cacheFile) ? trim(file_get_contents($cacheFile)) : '';
+// Připrav cache soubor
+$cacheFile = __DIR__ . '/last_item.json';
+$lastItem = file_exists($cacheFile) ? json_decode(file_get_contents($cacheFile), true) : [];
 
-if ($lastTitle !== $title) {
-    // nový článek – aktualizuj uložený název
-    file_put_contents($cacheFile, $title);
+// Pokud je nový článek, uloží se nový timestamp, jinak zůstane starý
+if (!isset($lastItem['title']) || $lastItem['title'] !== $title) {
+    $pubDate = date(DATE_RSS, $timestamp ?: time());
+    $lastBuildDate = $pubDate;
+    file_put_contents($cacheFile, json_encode(['title' => $title, 'link' => $link, 'pubDate' => $pubDate]));
 } else {
-    // žádná změna článku → použij starší datum (aby se neposílalo znovu)
-    $pubDate = "Tue, 23 Sep 2025 00:00:00 +0000";
+    $pubDate = $lastItem['pubDate'];
+    $lastBuildDate = $lastItem['pubDate'];
 }
 
 // 🧱 Vytvoření XML
 $xml = new DOMDocument("1.0", "UTF-8");
 $xml->formatOutput = true;
+
 $rss = $xml->createElement("rss");
 $rss->setAttribute("version", "2.0");
 $channel = $xml->createElement("channel");
@@ -61,6 +58,7 @@ $channel = $xml->createElement("channel");
 $channel->appendChild($xml->createElement("title", "SVJ Kytlická Novinky"));
 $channel->appendChild($xml->createElement("link", $url));
 $channel->appendChild($xml->createElement("description", "Novinky zveřejněné na webu SVJ Kytlická"));
+$channel->appendChild($xml->createElement("lastBuildDate", $lastBuildDate));
 
 // Položka
 $item = $xml->createElement("item");
