@@ -1,5 +1,7 @@
 <?php
+ob_clean(); // smaže případný buffer
 header("Content-Type: application/rss+xml; charset=UTF-8");
+echo '<?xml version="1.0" encoding="UTF-8"?>' . "\n";
 libxml_use_internal_errors(true);
 
 $baseUrl = 'https://kytlicka.eu';
